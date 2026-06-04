@@ -1,0 +1,17 @@
+# Пример reverse-proxy с авто-HTTPS (Let's Encrypt) перед нашим приложением.
+# Нужен домен, A-запись которого указывает на ваш статический IP.
+# Запуск:  caddy run --config Caddyfile   (или через docker-образ caddy)
+#
+# Заодно режем частоту запросов и проксируем на локальный порт приложения.
+
+ac.example.com {
+    encode zstd gzip
+
+    # приложение слушает 127.0.0.1:8000 (host-сеть compose)
+    reverse_proxy 127.0.0.1:8000
+
+    # доп. слой: можно потребовать тот же токен и на уровне прокси
+    # (раскомментируйте и подставьте значение):
+    # @noauth not header Authorization "Bearer YOUR_TOKEN"
+    # respond @noauth 401
+}

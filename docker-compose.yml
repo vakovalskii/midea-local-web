@@ -1,0 +1,21 @@
+services:
+  app:
+    build: .
+    image: mdv-ac
+    container_name: mdv-ac
+    restart: unless-stopped
+
+    # host-сеть нужна, чтобы:
+    #  - дотянуться до кондея в локалке по TCP 6444;
+    #  - работала UDP-discovery в provision.py.
+    # Сервер слушает порт 8000 хоста. (Linux. На Docker Desktop Mac/Win
+    # host-сеть ограничена — там используйте обычный проброс портов.)
+    network_mode: host
+
+    environment:
+      # ОБЯЗАТЕЛЬНО задайте токен в .env (см. .env.example)
+      - AC_API_TOKEN=${AC_API_TOKEN:? set AC_API_TOKEN in .env}
+
+    volumes:
+      # список устройств редактируется/пополняется снаружи (provision.py)
+      - ./backend/devices.json:/app/devices.json

@@ -1,0 +1,20 @@
+# секреты — НЕ коммитить
+.env
+backend/devices.json
+creds.json
+
+# python
+.venv/
+__pycache__/
+*.pyc
+
+# node / сборка
+web/node_modules/
+web/dist/
+backend/static/
+
+# прочее
+.playwright-mcp/
+/*.png
+*.log
+.DS_Store

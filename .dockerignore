@@ -1,0 +1,9 @@
+**/node_modules
+**/dist
+.venv
+**/__pycache__
+.git
+.playwright-mcp
+*.png
+*.log
+backend/static
