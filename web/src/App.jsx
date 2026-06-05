@@ -1,8 +1,23 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { listDevices, getState, setState, getToken, setToken, AuthError } from './api.js'
+import { listDevices, getState, setState, getToken, setToken, AuthError, openStateSocket } from './api.js'
 
 const MIN = 16
 const MAX = 30
+
+// Человекочитаемые имена точек (агентов). Неизвестные — капитализируем.
+const AGENT_LABELS = { office: 'Офис', home: 'Дом' }
+const agentLabel = (a) => AGENT_LABELS[a] || (a ? a[0].toUpperCase() + a.slice(1) : '')
+
+// Группировка устройств по точке (агенту), сохраняя порядок появления.
+function groupByAgent(devices) {
+  const m = new Map()
+  for (const d of devices) {
+    const k = d.agent || ''
+    if (!m.has(k)) m.set(k, [])
+    m.get(k).push(d)
+  }
+  return [...m.entries()]
+}
 
 const MODES = [
   { key: 'COOL', label: 'Холод', icon: '❄️' },
@@ -92,6 +107,11 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const optimistic = useRef(null)
+  // рефы для актуальных значений внутри WS-колбэков (избегаем устаревших замыканий)
+  const devIdRef = useRef(null)
+  const busyRef = useRef(false)
+  devIdRef.current = devId
+  busyRef.current = busy
 
   // 1) загрузка списка устройств
   async function loadDevices() {
@@ -127,6 +147,25 @@ export default function App() {
     const t = setInterval(load, 12000)
     return () => clearInterval(t)
   }, [devId])
+
+  // 3) realtime по WS (центр). Обновляет список устройств и состояние вживую.
+  useEffect(() => {
+    if (needToken) return
+    const close = openStateSocket({
+      onDevices: (list) => {
+        setDevices(list)
+        setDevId((cur) => cur ?? (list[0] && list[0].id))
+      },
+      onState: (id, st) => {
+        if (id !== devIdRef.current) return
+        if (busyRef.current) return // не затирать оптимистичное во время команды
+        setSt(st)
+        setError(null)
+      },
+      onAuthError: () => setNeedToken(true),
+    })
+    return close
+  }, [needToken])
 
   async function send(patch) {
     setBusy(true)
@@ -167,12 +206,22 @@ export default function App() {
         <div>
           {devices.length > 1 ? (
             <select className="dev-select" value={devId} onChange={(e) => setDevId(e.target.value)}>
-              {devices.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+              {groupByAgent(devices).map(([agent, list]) =>
+                agent ? (
+                  <optgroup key={agent} label={agentLabel(agent)}>
+                    {list.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </optgroup>
+                ) : (
+                  list.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)
+                )
+              )}
             </select>
           ) : (
             <div className="title">{current ? current.name : 'Кондиционер'}</div>
           )}
-          <div className="muted small">{current ? current.ip : ''}</div>
+          <div className="muted small">
+            {current ? [current.agent && agentLabel(current.agent), current.ip].filter(Boolean).join(' · ') : ''}
+          </div>
         </div>
         <button className={`power ${state.power ? 'on' : ''}`} disabled={busy}
           onClick={() => send({ power: !state.power })} aria-label="питание">⏻</button>

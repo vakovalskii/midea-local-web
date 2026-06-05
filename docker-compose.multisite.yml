@@ -1,0 +1,38 @@
+# Multisite-развёртывание: центр (публичный, за Traefik/TLS) + агент(ы) в LAN.
+#
+# Центр и офисный агент могут жить на одном хосте (хаб): центр слушает :8000,
+# агент подключается к ws://127.0.0.1:8000/agent/ws. Домашний агент поднимается
+# отдельно у себя и коннектится в wss://<your-center-domain>/agent/ws.
+#
+# .env (рядом): AC_API_TOKEN=...  AGENT_TOKEN=...
+#
+#   docker compose -f docker-compose.multisite.yml up -d --build
+
+services:
+  center:
+    build:
+      context: .
+      dockerfile: center/Dockerfile
+    image: mdv-center
+    container_name: mdv-center
+    restart: unless-stopped
+    network_mode: host          # слушает :8000 хоста (Traefik → <host-ip>:8000)
+    environment:
+      - AC_API_TOKEN=${AC_API_TOKEN:? set AC_API_TOKEN in .env}
+      - AGENT_TOKEN=${AGENT_TOKEN:? set AGENT_TOKEN in .env}
+
+  agent-office:
+    build: .                    # тот же образ, что standalone (backend + msmart)
+    image: mdv-ac
+    container_name: mdv-agent-office
+    restart: unless-stopped
+    network_mode: host          # нужен для UDP-discovery + TCP 6444 к кондею в LAN
+    command: ["python", "agent.py"]
+    environment:
+      - CENTER_WS_URL=ws://127.0.0.1:8000/agent/ws
+      - AGENT_ID=office
+      - AGENT_TOKEN=${AGENT_TOKEN:? set AGENT_TOKEN in .env}
+    volumes:
+      - ./backend/devices.json:/app/devices.json
+    depends_on:
+      - center

@@ -194,6 +194,54 @@ curl -H "Authorization: Bearer $AC_API_TOKEN" \
 
 ---
 
+## Мультисайт: несколько точек за NAT (агент + центр)
+
+Когда кондеи в **разных** сетях (офис, дом) за NAT, один центральный сервер
+не может дотянуться внутрь чужой LAN. Решение — **агент сам открывает
+исходящее WSS-соединение в центр** (как Cloudflare Tunnel / ngrok), проброс
+портов в точках не нужен.
+
+```
+[браузер] ──HTTPS/Bearer──▶ ЦЕНТР (публичный, TLS)
+                               ▲ WSS (агент держит исходящий сокет)
+                  ┌────────────┴────────────┐
+            [агент-office]             [агент-home]
+            в LAN кондеев              в LAN кондеев
+            └ TCP 6444 → кондеи        └ TCP 6444 → кондеи
+```
+
+- `backend/agent.py` — агент: локальный discovery/контроль + исходящий WSS в центр.
+- `center/server.py` — центр: реестр агентов, маршрутизация команд (RPC по `req_id`),
+  браузерный REST + **realtime по WSS** (`/api/ws`), раздача UI.
+- В пульте кондеи **группируются по точкам** (Офис/Дом), состояние обновляется
+  вживую без поллинга.
+
+<p align="center">
+  <img src="docs/multisite.png" alt="Мультисайт: группировка по точкам" width="300">
+</p>
+
+**Поднять центр** (на публичном хосте с TLS):
+```bash
+AC_API_TOKEN=<браузерный> AGENT_TOKEN=<секрет агентов> \
+  docker compose -f docker-compose.multisite.yml up -d --build
+```
+
+**Добавить точку** — поднять агент в её сети (он сам зарегается в центре):
+```bash
+cp backend/devices.example.json backend/devices.json
+docker compose -f docker-compose.agent.yml run --rm --entrypoint "" agent \
+  python provision.py --ip <IP_кондея> --name "<Имя>"
+echo "AGENT_TOKEN=<секрет агентов>" > .env
+AGENT_ID=home CENTER_WS_URL=wss://<домен-центра>/agent/ws \
+  docker compose -f docker-compose.agent.yml up -d --build
+```
+
+ENV центра: `AC_API_TOKEN` (браузер), `AGENT_TOKEN` (агент↔центр),
+`POLL_INTERVAL` (период realtime-опроса, сек). ENV агента: `CENTER_WS_URL`,
+`AGENT_ID`, `AGENT_TOKEN`.
+
+---
+
 ## Альтернативы
 
 Большинство существующих проектов — это интеграции для Home Assistant или

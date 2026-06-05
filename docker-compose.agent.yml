@@ -1,0 +1,27 @@
+# Удалённый агент (дом / другой офис) — поднимается в LAN своего кондея.
+# Сам открывает исходящее WSS в центр, проброс портов НЕ нужен.
+#
+# 1. На этой машине (в одной сети с кондеем) получить ключи кондея:
+#      cp backend/devices.example.json backend/devices.json
+#      docker compose -f docker-compose.agent.yml run --rm --entrypoint "" \
+#          agent python -m msmart.cli discover
+#      docker compose -f docker-compose.agent.yml run --rm --entrypoint "" \
+#          agent python provision.py --ip 192.168.X.Y --name "Дом"
+# 2. .env:  AGENT_TOKEN=<тот же секрет, что в центре>
+# 3. Запуск:
+#      AGENT_ID=home docker compose -f docker-compose.agent.yml up -d --build
+
+services:
+  agent:
+    build: .
+    image: mdv-ac
+    container_name: mdv-agent
+    restart: unless-stopped
+    network_mode: host
+    command: ["python", "agent.py"]
+    environment:
+      - CENTER_WS_URL=${CENTER_WS_URL:? set CENTER_WS_URL, напр. wss://your-center-domain/agent/ws}
+      - AGENT_ID=${AGENT_ID:-home}
+      - AGENT_TOKEN=${AGENT_TOKEN:? set AGENT_TOKEN in .env}
+    volumes:
+      - ./backend/devices.json:/app/devices.json
